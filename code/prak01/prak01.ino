@@ -1,17 +1,89 @@
-const int ledPin = 5;
+#include <ESP8266WiFi.h>  
+#include <ESP8266WebServer.h>  
+#include <DHT.h>
 
-void setup() {
-  Serial.begin(115200);
-  pinMode(ledPin, OUTPUT);
-  Serial.println("Praktikum 1 - Digital Output Dimulai!");
+const char* ssid = "delya";  
+const char* password = "abcde123";
+
+ESP8266WebServer server(80);
+
+// DIUBAH: Menggunakan GPIO14 (Pin D5 di NodeMCU)
+const byte dhtPin = 14;        
+const byte relayPin = 12; // Pin D6 di NodeMCU
+DHT dht(dhtPin, DHT11);
+
+const char index_html[] PROGMEM = R"rawliteral(  
+<!DOCTYPE html>  
+<html>  
+<head>  
+  <meta name="viewport" content="width=device-width, initial-scale=1">  
+  <title>IoT Dashboard</title>  
+  <style>  
+    body { font-family: Arial; text-align: center; margin-top: 50px; }  
+    button { padding: 15px 30px; font-size: 20px; border-radius: 8px; margin: 10px; cursor: pointer;}  
+    .btn-on { background-color: #4CAF50; color: white; border: none; }  
+    .btn-off { background-color: #f44336; color: white; border: none; }  
+    .sensor-box { font-size: 24px; font-weight: bold; }  
+  </style>  
+</head>  
+<body>  
+  <h1>ESP8266 Web Server</h1>  
+  <div class="sensor-box">  
+    <p>Suhu Saat Ini: <strong>%TEMPERATURE%</strong> Celcius</p>  
+  </div>  
+  <h2>Kendali Relay</h2>  
+  <a href="/relay/on"><button class="btn-on">ON</button></a>  
+  <a href="/relay/off"><button class="btn-off">OFF</button></a>  
+</body>  
+</html>  
+)rawliteral";
+
+void handleRoot() {  
+  String html = index_html;
+  
+  // BERI JEDA: Menunggu sensor siap sebelum dibaca
+  delay(1000); 
+  float t = dht.readTemperature();  
+  
+  if (isnan(t)) {
+    html.replace("%TEMPERATURE%", "--"); 
+  } else {
+    html.replace("%TEMPERATURE%", String(t)); 
+  }  
+  
+  server.send(200, "text/html", html);  
 }
 
-void loop() {
-  digitalWrite(ledPin, HIGH);
-  Serial.println("LED Menyala");
-  delay(1000);
-  
-  digitalWrite(ledPin, LOW);
-  Serial.println("LED Mati");
-  delay(5000);
+void handleRelayOn() {  
+  digitalWrite(relayPin, LOW); // Ubah ke HIGH jika relay Anda Active HIGH
+  server.sendHeader("Location", "/");   
+  server.send(303);  
+}
+
+void handleRelayOff() {  
+  digitalWrite(relayPin, HIGH); // Ubah ke LOW jika relay Anda Active HIGH
+  server.sendHeader("Location", "/");   
+  server.send(303);  
+}
+
+void setup() {  
+  Serial.begin(115200);  
+  pinMode(relayPin, OUTPUT);  
+  digitalWrite(relayPin, HIGH); // Default OFF untuk relay Active LOW
+  dht.begin();  
+    
+  WiFi.mode(WIFI_STA);   
+  WiFi.begin(ssid, password);  
+  while (WiFi.status() != WL_CONNECTED) { delay(500); Serial.print("."); }  
+  Serial.println("\nIP Address Server Anda: ");  
+  Serial.println(WiFi.localIP());
+
+  server.on("/", handleRoot);  
+  server.on("/relay/on", handleRelayOn);  
+  server.on("/relay/off", handleRelayOff);  
+  server.begin();  
+}
+
+void loop() {  
+  server.handleClient();  
 }
